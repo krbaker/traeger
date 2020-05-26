@@ -9,10 +9,6 @@ import urllib
 import websockets
 import asyncio
 import ssl
-import logging
-logger = logging.getLogger('websockets')
-logger.setLevel(logging.INFO)
-logger.addHandler(logging.StreamHandler())
 import paho.mqtt.client as mqtt
 import pprint
 
@@ -83,28 +79,6 @@ class traeger:
             self.mqtt_expires = json["expirationSeconds"] - 30 + base
             self.mqtt_url = json["signedUrl"]
         return json
-
-    # Doesn't work, signature is wrong
-    def get_thing(self):
-        mqtt_parts = urllib.parse.urlparse(self.mqtt_url)
-        print (mqtt_parts)
-        rest_parts = ("https", mqtt_parts.netloc, "/things/801F12CA03E1/shadow", mqtt_parts.params, mqtt_parts.query, mqtt_parts.fragment)
-        print (rest_parts)
-        rest_url = urllib.parse.urlunparse(rest_parts)
-        r = requests.get(rest_url)
-        print (r.json())
-
-    def get_mqtt_socket(self):
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-
-        async def foo():
-           async with websockets.connect(self.mqtt_url, ssl = context, subprotocols = ["mqtt"]) as websocket:
-             while True:
-               data = await websocket.recv()
-               print(data)
-        asyncio.get_event_loop().run_until_complete(foo())
 
     def get_mqtt_client(self):
         print ("Trying to build client...")

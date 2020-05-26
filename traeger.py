@@ -1,87 +1,70 @@
-import os
-import json
-import getpass
-import requests
-from requests.auth import HTTPBasicAuth
 import time
-import uuid
-import urllib
-import websockets
-import asyncio
 import ssl
 import paho.mqtt.client as mqtt
-import pprint
-
+import requests
+import uuid
+import urllib
+import json
 
 
 CLIENT_ID = "2fuohjtqv1e63dckp5v84rau0j"
-AIRSHIP_USER = 'iyMjnbXwSb6YkuePXYP3vA'
-AIRSHIP_PASS = 'XmmWBzX_RnG1EzmRmGXfJQ'
-AIRSHIP_CHANNEL = '38a33729-835b-46b0-9f14-b16ff383d51c'
-SEC_WebSocket_Key = "ZTU2YzIwMzQtZDBiMS00Nw=="
-
-def on_connect(client, userdata, flags, rc):
-    print("YES!")
-    print(str(userdata))
-
-def fail():
-    print("No :-(")
-
-pp = pprint.PrettyPrinter(indent=4)
-
-def on_message(client, userdata, message):
-    print("Something!")
-    print("Received message on topic '"
-          + message.topic + "' with QoS " + str(message.qos))
-    pp.pprint(json.loads(message.payload))
 
 class traeger:
-    def __init__(self, config_file="~/.traeger"):
-        self.config = {}
-        self.config_file = os.path.expanduser(config_file)
-        if os.path.exists(self.config_file):
-            try:
-                self.config = json.load(open(self.config_file))
-            except ValueError:
-                pass
-        self.mqtt_expires = 0
-        self.mqtt_url = None
-        if not "uuid" in self.config:
-            self.config["uuid"] = str(uuid.uuid1())
+    def __init__(self, username, password, token = None, token_expires = 0, mqtt_url = None, mqtt_url_expires = 0, mqtt_uuid = str(uuid.uuid1())):
+        self.username = username
+        self.password = password
+        self.token = token
+        self.token_expires = token_expires
+        self.mqtt_url = mqtt_url
+        self.mqtt_url_expires = mqtt_url_expires
+        self.mqtt_uuid = mqtt_uuid
+        self.get_grills()
+        self.grill_status = {}
 
-    def refresh(self):
-        if not "token" in self.config  or self.token_remaining() < 60:
+    def token_remaining(self):
+        return self.token_expires - time.time()
+
+    def refresh_token(self):
+        if self.token_remaining() < 60:
             request_time = time.time()
             r = requests.post("https://cognito-idp.us-west-2.amazonaws.com/", json = 
                     {"AuthFlow":"USER_PASSWORD_AUTH",
-                     "AuthParameters":{"USERNAME":self.config["username"],
-                                       "PASSWORD":self.config["password"]},
+                     "AuthParameters":{"USERNAME": self.username,
+                                       "PASSWORD": self.password},
                      "ClientId": CLIENT_ID},
                               headers = {'Content-Type': 'application/x-amz-json-1.1',
                                          'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth'})
             response = r.json()
-            self.config["expires"] = response["AuthenticationResult"]["ExpiresIn"] + request_time
-            self.config["token"] = response["AuthenticationResult"]["IdToken"]
+            self.token_expires = response["AuthenticationResult"]["ExpiresIn"] + request_time
+            self.token = response["AuthenticationResult"]["IdToken"]
 
-    def get_self(self):
+    def get_user_data(self):
+        self.refresh_token()
         r = requests.get("https://1ywgyc65d1.execute-api.us-west-2.amazonaws.com/prod/users/self",
-                         headers = {'authorization': self.config["token"]})
+                         headers = {'authorization': self.token})
         json = r.json()
-        self.urbanAirshipId = json["urbanAirshipId"] 
-        return r.json()
-
-    def get_mqtt(self):
-        base = time.time()
-        if self.mqtt_expires < base:
-            r = requests.post("https://1ywgyc65d1.execute-api.us-west-2.amazonaws.com/prod/mqtt-connections",
-                              headers = {'authorization': self.config["token"]})
-            json = r.json()
-            self.mqtt_expires = json["expirationSeconds"] - 30 + base
-            self.mqtt_url = json["signedUrl"]
         return json
 
-    def get_mqtt_client(self):
-        print ("Trying to build client...")
+    def get_grills(self):
+        json = self.get_user_data()
+        self.grills = json["things"]
+        return self.grills
+
+    def mqtt_url_remaining(self):
+        return self.mqtt_url_expires - time.time()
+
+    def refresh_mqtt_url(self):
+        self.refresh_token()
+        if self.mqtt_url_remaining() < 60:
+            mqtt_request_time = time.time()
+            r = requests.post("https://1ywgyc65d1.execute-api.us-west-2.amazonaws.com/prod/mqtt-connections",
+                              headers = {'authorization': self.token})
+            json = r.json()
+            self.mqtt_url_expires = json["expirationSeconds"] + mqtt_request_time
+            self.mqtt_url = json["signedUrl"]
+
+    def get_mqtt_client(self, on_connect, on_message):
+        self.refresh_mqtt_url()
         mqtt_parts = urllib.parse.urlparse(self.mqtt_url)
         mqtt_client = mqtt.Client(transport = "websockets")
         mqtt_client.on_connect = on_connect
@@ -98,42 +81,19 @@ class traeger:
         mqtt_client.loop_start()
         return mqtt_client
 
-    def token_remaining(self):
-        if "expires" in self.config:
-            return self.config["expires"] - time.time()
-        return -1
-
-    def set_username(self, user):
-        self.config["username"] = user
-
-    def set_password(self, passwd):
-        self.config["password"] = passwd
-
-    def save(self):
-        f = open(self.config_file,"w+")
-        json.dump(self.config, f)
-        f.close()
-
-if __name__ == "__main__":
-    t = traeger()
-    if not "username" in t.config:
-        t.set_username(input("Enter Username : "))
-    if not "password" in t.config:
-        t.set_password(getpass.getpass())
-    t.refresh()
-    print (t.config["token"])
-    print (t.config["expires"])
-    print (t.token_remaining())
-    print (t.get_self())
-    print (t.get_mqtt())
-    client = t.get_mqtt_client()
-    client.subscribe(("prod/thing/update/801F12CA03E1",1))
-    while True:
-        time.sleep(10)
-        client.publish("prod/thing/update/801F12CA03E1", payload=None, qos=0, retain=False)
-    #print ("Connecting")
-    #s = t.get_mqtt_socket()
-    #print ("Connceted")
-
-    t.save()
-
+    def grill_message(self, client, userdata, message):
+        if message.topic.startswith("prod/thing/update/"):
+            grill_id = message.topic[len("prod/thing/update/"):]
+            self.grill_status[grill_id] = json.loads(message.payload)
+        
+    def grill_connect(self, client, userdata, flags, rc):
+        pass
+    
+    def get_grill_status(self):
+        client = self.get_mqtt_client(self.grill_connect, self.grill_message)
+        for grill in self.grills:
+            client.subscribe(("prod/thing/update/{}".format(grill["thingName"]),1))
+        for grill in self.grills:
+            while not grill["thingName"] in self.grill_status:
+                time.sleep(1)
+        return self.grill_status

@@ -98,17 +98,6 @@ class traeger:
         mqtt_client.loop_start()
         return mqtt_client
 
-    def associate(self):
-        r = requests.post("https://device-api.urbanairship.com/api/named_users/associate", json = {
-                "channel_id": AIRSHIP_CHANNEL,
-                "device_type": "android",
-                "named_user_id": self.urbanAirshipId },
-                          auth = HTTPBasicAuth(AIRSHIP_USER, 
-                                               AIRSHIP_PASS),
-                          headers = {'Content-Type': 'application/json',
-                                     'Accept': 'application/vnd.urbanairship+json; version=3;'})
-        return r.json()
-
     def token_remaining(self):
         if "expires" in self.config:
             return self.config["expires"] - time.time()
@@ -136,7 +125,6 @@ if __name__ == "__main__":
     print (t.config["expires"])
     print (t.token_remaining())
     print (t.get_self())
-    print (t.associate())
     print (t.get_mqtt())
     client = t.get_mqtt_client()
     client.subscribe(("prod/thing/update/801F12CA03E1",1))

@@ -19,6 +19,7 @@ class traeger:
         self.mqtt_url_expires = mqtt_url_expires
         self.mqtt_uuid = mqtt_uuid
         self.get_grills()
+        self.mqtt_client = None
         self.grill_status = {}
 
     def token_remaining(self):
@@ -64,22 +65,23 @@ class traeger:
             self.mqtt_url = json["signedUrl"]
 
     def get_mqtt_client(self, on_connect, on_message):
-        self.refresh_mqtt_url()
-        mqtt_parts = urllib.parse.urlparse(self.mqtt_url)
-        mqtt_client = mqtt.Client(transport = "websockets")
-        mqtt_client.on_connect = on_connect
-        mqtt_client.on_message = on_message
-        headers = {
-            "Host": "{0:s}".format(mqtt_parts.netloc),
-            }
-        mqtt_client.ws_set_options(path="{}?{}".format(mqtt_parts.path, mqtt_parts.query), headers=headers)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        mqtt_client.tls_set_context(context)
-        mqtt_client.connect(mqtt_parts.netloc, 443)
-        mqtt_client.loop_start()
-        return mqtt_client
+        if self.mqtt_client == None:
+            self.refresh_mqtt_url()
+            mqtt_parts = urllib.parse.urlparse(self.mqtt_url)
+            self.mqtt_client = mqtt.Client(transport = "websockets")
+            self.mqtt_client.on_connect = on_connect
+            self.mqtt_client.on_message = on_message
+            headers = {
+                "Host": "{0:s}".format(mqtt_parts.netloc),
+                }
+            self.mqtt_client.ws_set_options(path="{}?{}".format(mqtt_parts.path, mqtt_parts.query), headers=headers)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            self.mqtt_client.tls_set_context(context)
+            self.mqtt_client.connect(mqtt_parts.netloc, 443)
+            self.mqtt_client.loop_start()
+        return self.mqtt_client
 
     def grill_message(self, client, userdata, message):
         if message.topic.startswith("prod/thing/update/"):

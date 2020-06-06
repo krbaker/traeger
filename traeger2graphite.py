@@ -12,6 +12,7 @@ import traeger
 import numbers
 import json
 import time
+import socket
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -54,7 +55,13 @@ if __name__ == "__main__":
         config["username"] = input("username:")
     if "password" not in config:
         config["password"] = getpass.getpass()
+    if "graphite_port" not in config:
+        config["graphite_port"] = input("graphite port:")
+    if "graphite_host" not in config:
+        config["graphite_host"] = input("graphite host:")
+
     open(os.path.expanduser("~/.traeger"),"w").write(json.dumps(config))
+
 
     t = traeger.traeger(config['username'], config['password'])
     
@@ -66,8 +73,14 @@ if __name__ == "__main__":
             if grill["thingName"] not in grills_status:
                 print ("Missing Data for {}".format(grill["thingName"]))
 
-        for k,v in unpack_dict([], grills_status): 
-            print ("{} {}".formtat(k, v))
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((config["graphite_host"], int(config["graphite_port"])))
+            for k,v in unpack_dict([], grills_status):
+                s.send("traeger.{} {} {}\r\n".format(k, v, int(last_collect)).encode())
+            s.close()
+        except Exception as e:
+            print (e)
         next_collect = last_collect + 60
         until_collect = next_collect - time.time()
         if until_collect > 0:

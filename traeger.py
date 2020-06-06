@@ -89,11 +89,15 @@ class traeger:
     def grill_connect(self, client, userdata, flags, rc):
         pass
     
-    def get_grill_status(self):
+    def get_grill_status(self, timeout = 10):
         client = self.get_mqtt_client(self.grill_connect, self.grill_message)
         for grill in self.grills:
+            if grill["thingName"] in self.grill_status:
+                del self.grill_status[grill["thingName"]]
             client.subscribe(("prod/thing/update/{}".format(grill["thingName"]),1))
         for grill in self.grills:
-            while not grill["thingName"] in self.grill_status:
+            remaining = timeout
+            while not grill["thingName"] in self.grill_status and remaining > 0:
                 time.sleep(1)
+                remaining -= 1                    
         return self.grill_status

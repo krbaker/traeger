@@ -4,6 +4,10 @@
 """
 Collects stats from traeger grills
 
+Copyright 2020 by Keith Baker All rights reserved.
+This file is part of the traeger python library,
+and is released under the "GNU GENERAL PUBLIC LICENSE Version 2". 
+Please see the LICENSE file that should have been included as part of this package.
 """
 import os
 import getpass

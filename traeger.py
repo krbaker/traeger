@@ -14,7 +14,7 @@ import requests
 import uuid
 import urllib
 import json
-
+import queue
 
 CLIENT_ID = "2fuohjtqv1e63dckp5v84rau0j"
 
@@ -112,3 +112,13 @@ class traeger:
                 time.sleep(1)
                 remaining -= 1                    
         return self.grill_status
+
+    def grill_status_subscription(self):
+        sub_queue = queue.Queue()
+        def handle_message(client, userdata, message):
+            sub_queue.put(json.loads(message.payload))
+        client = self.get_mqtt_client(self.grill_connect, handle_message)
+        for grill in self.grills:
+            client.subscribe(("prod/thing/update/{}".format(grill["thingName"]),1))
+        while True:
+            yield sub_queue.get()
